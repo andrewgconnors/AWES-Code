@@ -6,40 +6,51 @@ Ticker t; // ticker used to time sampling
 int sampleNumber = 0; // number used to fill the buffer array
 int updateFlag = 0; // control when the FFT updates
 
-const uint16_t SEQUENCE_LENGTH = 1024;
-const uint16_t BAND_QUANTITY = 8;
+const uint16_t SEQUENCE_LENGTH = 1024; // number of samples in a frame
+const uint16_t BAND_QUANTITY = 8; // number of output frequency bands
 
 float32_t audio_buffer[SEQUENCE_LENGTH];
 float32_t fft_in_buffer[SEQUENCE_LENGTH];
 float32_t fft_out_buffer[SEQUENCE_LENGTH];
 float32_t output_state[BAND_QUANTITY];
 
-arm_cfft_instance_f32 CFFT = {SEQUENCE_LENGTH, twiddleCoef_1024, armBitRevIndexTable1024, ARMBITREVINDEXTABLE1024_TABLE_LENGTH}; // initialize complex FFT
+arm_cfft_instance_f32 CFFT = {SEQUENCE_LENGTH/2, twiddleCoef_512, armBitRevIndexTable512, ARMBITREVINDEXTABLE_512_TABLE_LENGTH}; // initialize complex FFT
 arm_rfft_fast_instance_f32 RFFT = {CFFT, SEQUENCE_LENGTH, (float32_t*)twiddleCoef_rfft_1024}; // initialize real FFT   
 
 void sampleOverWindow() {
     audio_buffer[sampleNumber] = (float32_t)(((float32_t)((LPC_ADC->ADGDR >> 4) & 0xFFF))/((float32_t)0xFFF)); // read input voltage level
     sampleNumber++;
-    if(sampleNumber == 1024) {
+    if(sampleNumber == SEQUENCE_LENGTH) {
         updateFlag = 1;
         sampleNumber = 0;
     }
 }
 
-float32_t arraySumSquared(uint16_t startIndex, uint16_t stopIndex, float32_t *array) {
+void subtractMean() {
+    float32_t sum = 0;
+    for(uint16_t i = 0; i < BAND_QUANTITY; i++) {
+        sum += output_state[i];
+    }
+    sum = sum/BAND_QUANTITY;
+    for(uint16_t i = 0; i < BAND_QUANTITY; i++) {
+        output_state[i] -= sum;
+    }
+}
+
+float32_t arraySum(uint16_t startIndex, uint16_t stopIndex, float32_t *array) {
     float32_t sum = 0;
     for(uint16_t i = startIndex; i < stopIndex; i++) {
-        sum += array[i]*array[i];
+        sum += fabs(array[i]);
     }
     return sum;
 }
 
 void updateOutput(float32_t *fft_current_output) {
-    uint16_t scale = SEQUENCE_LENGTH/(2*BAND_QUANTITY);
+    uint16_t scale = SEQUENCE_LENGTH/(BAND_QUANTITY);
     printf("Scale = %u\n", scale);
     fft_current_output[0] = 0;
     for(uint16_t i = 0; i < BAND_QUANTITY; i++) {
-        output_state[i] = arraySumSquared(scale*i, scale*(i+1), fft_current_output);
+        output_state[i] = arraySum((scale*i), (scale*(i+1)), fft_current_output);
     }
 }
 
@@ -56,14 +67,11 @@ int main() {
     
     while(1) {
         if(updateFlag) {
+            updateFlag = 0;
             memcpy(fft_in_buffer, audio_buffer, sizeof audio_buffer);
             arm_rfft_fast_f32(&RFFT, fft_in_buffer, fft_out_buffer, 0); // update FFT
-            updateFlag = 0;
             updateOutput(fft_out_buffer);
-            for(int i = 0; i < BAND_QUANTITY; i++) {
-                printf("Current Output %d: %f\n", i, output_state[i]);
-            }
-            //t.attach_us(&sampleOverWindow, 25);
+            subtractMean();
         }
         
     }
