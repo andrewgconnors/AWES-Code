@@ -10,12 +10,6 @@ enum modes_t { BPM, STANDBY, OFF } MODE; // current mode of operation
 DigitalIn modeButton(p14);
 int run = 1;
 
-DigitalOut AD0(p15);
-DigitalOut AD2(p17);
-DigitalOut AD3(p18);
-DigitalOut AD4(p19);
-DigitalOut AD5(p20);
-
 Ticker t; // ticker used to time sampling
 int sampleNumber = 0; // number used to fill the buffer array
 int updateFlag = 0; // control when the FFT updates
@@ -54,7 +48,8 @@ arm_rfft_fast_instance_f32 RFFT = {CFFT, SEQUENCE_LENGTH, (float32_t*)twiddleCoe
 
 // Read the analog pin 1024 times, then set an update flag to analyze frame
 void sampleOverWindow() {
-    audio_buffer[sampleNumber] = (float32_t)(((float32_t)((LPC_ADC->ADGDR >> 4) & 0xFFF))/((float32_t)0xFFF)); // read input voltage level
+    while((LPC_ADC->ADSTAT & 0x2) == 0);
+    audio_buffer[sampleNumber] = (float32_t)(((float32_t)((LPC_ADC->ADDR1 >> 4) & 0xFFF))/((float32_t)0xFFF)); // read input voltage level
     sampleNumber++;
     if(sampleNumber == SEQUENCE_LENGTH) {
         //printf("%f", audio_buffer[1023]);
@@ -116,11 +111,6 @@ void updateState(float32_t *fft_current_output) {
 
 int main() {
     
-    AD0.write(0);
-    AD2.write(0);
-    AD3.write(0);
-    AD4.write(0);
-    AD5.write(0);
     led.write(1);
     MODE = BPM;
     
