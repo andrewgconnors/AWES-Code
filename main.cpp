@@ -7,8 +7,14 @@ FILE *fp = fopen("/local/audio.txt", "w");
 DigitalOut led(p25);
 
 enum modes_t { BPM, STANDBY, OFF } MODE; // current mode of operation
-DigitalIn modeButton(p15);
+DigitalIn modeButton(p14);
 int run = 1;
+
+DigitalOut AD0(p15);
+DigitalOut AD2(p17);
+DigitalOut AD3(p18);
+DigitalOut AD4(p19);
+DigitalOut AD5(p20);
 
 Ticker t; // ticker used to time sampling
 int sampleNumber = 0; // number used to fill the buffer array
@@ -110,15 +116,23 @@ void updateState(float32_t *fft_current_output) {
 
 int main() {
     
+    AD0.write(0);
+    AD2.write(0);
+    AD3.write(0);
+    AD4.write(0);
+    AD5.write(0);
     led.write(1);
     MODE = BPM;
     
     // ADC Configuration
     LPC_SC->PCONP |= 0x00001000; // enable ADC power
     LPC_SC->PCLKSEL0 |= 0x03000000; // select CCLK/8 for the ADC, so 96/8 = 12 MHz
-    LPC_PINCON->PINSEL1 |= 0x00100000; // set pin 0.26 (p18) to AD0.3 mode
-    LPC_PINCON->PINMODE1 |= 0x00200000; // set neither pull-up nor pull-down resistor mode
-    LPC_ADC->ADCR |= 0x00210008; // set ADC to be operational, set SEL to AD0.3, CLKDIV to 0, BURST to 1, and START to 000
+    LPC_PINCON->PINSEL1 |= 0x00010000; // set pin 0.24 (p16) to AD0.1 mode
+    LPC_PINCON->PINMODE1 |= 0x00020000; // set neither pull-up nor pull-down resistor mode on pin 0.24
+    //LPC_PINCON->PINMODE0 |= 0x000000F0; // set pull-down resistors on pins 0.02, 0.03
+    //LPC_PINCON->PINMODE1 |= 0x003EC000; // set neither pull-up nor pull-down resistor mode on pin 0.24 and pull-down on pins 0.23, 0.25, 0.26
+    //LPC_PINCON->PINMODE3 |= 0xF0000000; // set pull-down resistors on pins 1.30, 1.31
+    LPC_ADC->ADCR |= 0x00210002; // set ADC to be operational, set SEL to AD0.1, CLKDIV to 0, BURST to 1, and START to 000
     
     t.attach_us(&sampleOverWindow, 25); // read the analog input every 25 us
     
