@@ -106,7 +106,6 @@ void updateState(float32_t *fft_current_output) {
         else energy_history_buffer_position++;
         fprintf(fp, "band %u: energy: %f; average: %f\n\r", i, energy_buffer[i], energy_history_buffer[i][HISTORY_QUANTITY]);
         if(energy_buffer[i] > 1.4*energy_history_buffer[i][HISTORY_QUANTITY]) beatDetect++;
-        printf("current e: %f; historical e: %f\n", energy_buffer[i], energy_history_buffer[i][HISTORY_QUANTITY]);
     }
 }
 
