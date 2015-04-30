@@ -2,13 +2,16 @@
 #include "arm_math.h"
 #include "arm_common_tables.h"
 
-//LocalFileSystem local("local");
-//FILE *fp = fopen("/local/energies.txt", "w");
 DigitalOut led(p25);
 
 enum modes_t { BPM, STANDBY, OFF } MODE; // current mode of operation
-DigitalIn modeButton(p15);
-//int run = 1;
+DigitalIn modeButton(p14);
+
+DigitalOut AD0(p15);
+DigitalOut AD2(p17);
+DigitalOut AD3(p18);
+DigitalOut AD4(p19);
+DigitalOut AD5(p20);
 
 Ticker t; // ticker used to time sampling
 int sampleNumber = 0; // number used to fill the buffer array
@@ -18,6 +21,8 @@ const uint16_t SEQUENCE_LENGTH = 1024; // number of samples in a frame
 const uint16_t OUTPUT_BAND_QUANTITY = 8; // number of output frequency bands
 const uint16_t BPM_BAND_QUANTITY = 32; // number of frequency bands for BPM calculation
 const uint16_t HISTORY_QUANTITY = 39; // 39 frames of history, so one second's worth of history
+
+AnalogOut musicOut(p18);
 
 DigitalOut m0(p5);
 DigitalOut m1(p6);
@@ -32,6 +37,7 @@ DigitalOut motors[] = {m0, m1, m2, m3, m4, m5, m6, m7};
 
 // Buffers used to track state of the machine
 float32_t audio_buffer[SEQUENCE_LENGTH];
+float32_t audio_out_buffer[SEQUENCE_LENGTH];
 float32_t fft_in_buffer[SEQUENCE_LENGTH];
 float32_t fft_out_buffer[SEQUENCE_LENGTH];
 
@@ -48,18 +54,16 @@ arm_rfft_fast_instance_f32 RFFT = {CFFT, SEQUENCE_LENGTH, (float32_t*)twiddleCoe
 
 // Read the analog pin 1024 times, then set an update flag to analyze frame
 void sampleOverWindow() {
+    musicOut = audio_out_buffer[sampleNumber];
     audio_buffer[sampleNumber] = (float32_t)(((float32_t)((LPC_ADC->ADGDR >> 4) & 0xFFF))/((float32_t)0xFFF)); // read input voltage level
     sampleNumber++;
     if(sampleNumber == SEQUENCE_LENGTH) {
-        //printf("%f", audio_buffer[1023]);
         updateFlag = 1;
         sampleNumber = 0;
     }
 }
 
 void switchMode() {
-    //fprintf(fp, "button hit");
-    //run = 0;
     switch(MODE) {
         case BPM:
             output_bubble_state = 0x81;
@@ -74,6 +78,7 @@ void switchMode() {
             MODE = BPM;
             break;
     }
+    while(modeButton.read() == 1);
 }
 
 void subtractMean(float32_t * array, uint16_t arraySize) {
@@ -92,7 +97,6 @@ float32_t arraySum(uint16_t startIndex, uint16_t stopIndex, float32_t *array) {
     for(uint16_t i = startIndex; i < stopIndex; i++) {
         sum += fabs(array[i]);
     }
-    //printf("sum = %f\n", sum);
     return sum;
 }
 
@@ -109,32 +113,34 @@ void updateState(float32_t *fft_current_output) {
     fft_current_output[0] = 0;
     
     for(uint16_t i = 0; i < 7; i++) { // analyze <200 Hz
-        //printf("current e on band: ");
         energy_buffer[i] = arraySum((scale*i), (scale*(i+1)), fft_current_output)/BPM_BAND_QUANTITY;
-        //printf("current e average: ");
         energy_history_buffer[i][HISTORY_QUANTITY] = arraySum(0, HISTORY_QUANTITY, energy_history_buffer[i])/39;
         energy_history_buffer[i][energy_history_buffer_position] = energy_buffer[i];
-        //printf("newest e history entry: %f\n", energy_history_buffer[i][energy_history_buffer_position]);
-        //printf("intended newest e history entry: %f\n", energy_buffer[i]);
         if(energy_history_buffer_position == HISTORY_QUANTITY - 1) energy_history_buffer_position = 0;
         else energy_history_buffer_position++;
-        //fprintf(fp, "band %u: energy: %f; average: %f\n\r", i, energy_buffer[i], energy_history_buffer[i][HISTORY_QUANTITY]);
         if(energy_buffer[i] > 1.4*energy_history_buffer[i][HISTORY_QUANTITY]) beatDetect++;
-        //printf("current e: %f; historical e: %f\n", energy_buffer[i], energy_history_buffer[i][HISTORY_QUANTITY]);
     }
 }
 
 int main() {
     
+    AD0.write(0);
+    AD2.write(0);
+    AD3.write(0);
+    AD4.write(0);
+    AD5.write(0);
     led.write(1);
     MODE = BPM;
     
     // ADC Configuration
     LPC_SC->PCONP |= 0x00001000; // enable ADC power
     LPC_SC->PCLKSEL0 |= 0x03000000; // select CCLK/8 for the ADC, so 96/8 = 12 MHz
-    LPC_PINCON->PINSEL1 |= 0x00100000; // set pin 0.26 (p18) to AD0.3 mode
-    LPC_PINCON->PINMODE1 |= 0x00200000; // set neither pull-up nor pull-down resistor mode
-    LPC_ADC->ADCR |= 0x00210008; // set ADC to be operational, set SEL to AD0.3, CLKDIV to 0, BURST to 1, and START to 000
+    LPC_PINCON->PINSEL1 |= 0x00010000; // set pin 0.24 (p16) to AD0.1 mode
+    LPC_PINCON->PINMODE1 |= 0x00020000; // set neither pull-up nor pull-down resistor mode on pin 0.24
+    //LPC_PINCON->PINMODE0 |= 0x000000F0; // set pull-down resistors on pins 0.02, 0.03
+    //LPC_PINCON->PINMODE1 |= 0x003EC000; // set neither pull-up nor pull-down resistor mode on pin 0.24 and pull-down on pins 0.23, 0.25, 0.26
+    //LPC_PINCON->PINMODE3 |= 0xF0000000; // set pull-down resistors on pins 1.30, 1.31
+    LPC_ADC->ADCR |= 0x00210002; // set ADC to be operational, set SEL to AD0.1, CLKDIV to 0, BURST to 1, and START to 000
     
     t.attach_us(&sampleOverWindow, 25); // read the analog input every 25 us
     
@@ -146,20 +152,20 @@ int main() {
             if(updateFlag) {
                 updateFlag = 0;
                 memcpy(fft_in_buffer, audio_buffer, sizeof audio_buffer);
+                memcpy(audio_out_buffer, fft_in_buffer, sizeof audio_buffer);
                 subtractMean(fft_in_buffer, SEQUENCE_LENGTH);
                 arm_rfft_fast_f32(&RFFT, fft_in_buffer, fft_out_buffer, 0); // update FFT
                 updateState(fft_out_buffer);
-            }
-            if(beatDetect > 0) {
-                //printf("beat detected:");
-                if(direction) output_bubble_state <<= 1;
-                else output_bubble_state >>= 1;
-                if(output_bubble_state == 1) direction = true;
-                else if(output_bubble_state == 0x80) direction = false;
-                else if(output_bubble_state == 0x00) output_bubble_state = 0x01;
-                updateBubbles();
-                //printf("%u\n", output_bubble_state);
-                beatDetect = 0;
+                if(beatDetect > 0) {
+                    if(direction) output_bubble_state <<= 1;
+                    else output_bubble_state >>= 1;
+                    if(output_bubble_state == 1) direction = true;
+                    else if(output_bubble_state == 0x80) direction = false;
+                    else if(output_bubble_state == 0x00) output_bubble_state = 0x01;
+                    updateBubbles();
+                    //printf("%u\n", output_bubble_state);
+                    beatDetect = 0;
+                }
             }
             break;
         case STANDBY:
@@ -180,6 +186,5 @@ int main() {
     }
     output_bubble_state = 0;
     updateBubbles();
-    //fclose(fp);
     led.write(0);
 }
