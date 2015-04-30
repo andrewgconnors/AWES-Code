@@ -3,7 +3,7 @@
 #include "arm_common_tables.h"
 
 LocalFileSystem local("local");
-FILE *fp = fopen("/local/energies.txt", "w");
+FILE *fp = fopen("/local/audio.txt", "w");
 DigitalOut led(p25);
 
 enum modes_t { BPM, STANDBY, OFF } MODE; // current mode of operation
@@ -104,7 +104,6 @@ void updateState(float32_t *fft_current_output) {
         //printf("intended newest e history entry: %f\n", energy_buffer[i]);
         if(energy_history_buffer_position == HISTORY_QUANTITY - 1) energy_history_buffer_position = 0;
         else energy_history_buffer_position++;
-        fprintf(fp, "band %u: energy: %f; average: %f\n\r", i, energy_buffer[i], energy_history_buffer[i][HISTORY_QUANTITY]);
         if(energy_buffer[i] > 1.4*energy_history_buffer[i][HISTORY_QUANTITY]) beatDetect++;
     }
 }
@@ -128,6 +127,9 @@ int main() {
         if(updateFlag) {
             updateFlag = 0;
             memcpy(fft_in_buffer, audio_buffer, sizeof audio_buffer);
+            for(int i = 0; i < SEQUENCE_LENGTH; i++) {
+                fprintf(fp, "%f\n", fft_in_buffer[i]);
+            }
             subtractMean(fft_in_buffer, SEQUENCE_LENGTH);
             arm_rfft_fast_f32(&RFFT, fft_in_buffer, fft_out_buffer, 0); // update FFT
             updateState(fft_out_buffer);
