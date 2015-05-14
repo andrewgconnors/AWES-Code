@@ -143,7 +143,7 @@ void BPMLights() {
         uint8_t r = (127*((i+1)>>2))*(output_bubble_state >> i & 1);
         uint8_t g = 127*(((i+1)>>1)&1)*(output_bubble_state >> i & 1);
         uint8_t b = 127*((i+1)&1)*(output_bubble_state >> i & 1);
-        columnColor(strip.Color(r, g, b), i);
+        columnColor(strip.Color(r, g, b), 7-i);
     }
 }
 
